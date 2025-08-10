@@ -1,0 +1,38 @@
+(async () => {
+  const BLOG = 'https://instagram-tags-generator.blogspot.com';
+  const FEED = `${BLOG}/atom.xml?redirect=false&start-index=1&max-results=500`;
+
+  const res = await fetch(FEED, { headers: { 'Accept': 'application/atom+xml' }});
+  if (!res.ok) throw new Error('Failed to fetch Atom feed');
+  const xmlText = await res.text();
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+
+  const entries = [...doc.querySelectorAll('entry')].map(e => {
+    const link = [...e.querySelectorAll('link')].find(l => l.getAttribute('rel') === 'alternate');
+    const href = link?.getAttribute('href');
+    const updated = e.querySelector('updated')?.textContent?.trim();
+    return { href, updated };
+  }).filter(x => x.href);
+
+  // Build XML <urlset>
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+  const urls = entries.map(({href, updated}) => {
+    const lastmod = updated ? `<lastmod>${new Date(updated).toISOString().slice(0,10)}</lastmod>` : '';
+    return `  <url>\n    <loc>${esc(href)}</loc>\n${lastmod}\n    <changefreq>weekly</changefreq>\n    <priority>0.80</priority>\n  </url>`;
+  }).join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+
+  // Download sitemap.xml
+  const blob = new Blob([xml], {type: 'application/xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sitemap.xml';
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  console.log(`Generated sitemap with ${entries.length} URLs`);
+})();
+
